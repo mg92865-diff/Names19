@@ -1,0 +1,242 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root { --primary: #2196F3; --danger: #f44336; --success: #4CAF50; --bg: #eeeeee; --text: #212121; }
+        
+        /* Locking the body so it doesn't scroll the whole page */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg); 
+            margin: 0; 
+            display: flex; 
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden; 
+        }
+
+
+        .container { 
+            background: white; 
+            width: 100%; 
+            max-width: 500px; 
+            display: flex;
+            flex-direction: column; /* Stack header and content vertically */
+            box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+        }
+
+
+        /* The Header stays put */
+        .header-box {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid var(--primary);
+            padding: 20px;
+            background: white;
+            z-index: 10;
+        }
+        
+        h2 { margin: 0; color: var(--text); font-size: 1.4rem; }
+
+
+        /* Only the data area scrolls */
+        #records-container {
+            flex: 1; /* Take up all remaining space */
+            overflow-y: auto; /* Enable scrolling for list only */
+            padding: 0 10px;
+        }
+
+
+        .view { display: none; height: 100%; flex-direction: column; }
+        .active { display: flex; animation: fadeIn 0.3s; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+
+        /* Buttons and Inputs */
+        .btn-small { padding: 8px 12px; font-size: 0.75rem; width: auto; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+        .btn-add-small { background: var(--primary); color: white; }
+        .btn-backup-small { background: #757575; color: white; }
+
+
+        .record-item { 
+            display: grid;
+            grid-template-columns: 1fr auto;
+            padding: 18px; 
+            border-bottom: 1px solid #ddd; 
+            cursor: pointer; 
+            font-size: 1.1rem;
+            align-items: center;
+        }
+
+
+        .input-area { padding: 20px; overflow-y: auto; }
+        input { width: 100%; padding: 15px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button.full-btn { width: 100%; padding: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1rem; margin-top: 12px; text-transform: uppercase; }
+        .btn-save { background: var(--success); color: white; }
+        .btn-delete { background: var(--danger); color: white; }
+        .btn-cancel { background: #757575; color: white; }
+        .label-hint { font-size: 0.8rem; color: #666; margin-bottom: -5px; display: block; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+
+<div class="container">
+    <!-- LIST VIEW -->
+    <div id="view-list" class="view active">
+        <div class="header-box">
+            <h2>Records</h2>
+            <button class="btn-small btn-backup-small" onclick="exportData()">Backup</button>
+            <button class="btn-small btn-add-small" onclick="showView('view-input')">+ Add</button>
+        </div>
+        <div id="records-container"></div>
+    </div>
+
+
+    <!-- INPUT VIEW -->
+    <div id="view-input" class="view">
+        <div class="header-box"><h2>New Entry</h2></div>
+        <div class="input-area">
+            <label class="label-hint">Full Name</label>
+            <input type="text" id="in-name" placeholder="e.g. John Doe">
+            <label class="label-hint">Age</label>
+            <input type="number" id="in-age" inputmode="numeric">
+            <button class="btn-save full-btn" onclick="addRecord()">Save Record</button>
+            <button class="btn-cancel full-btn" onclick="showView('view-list')">Cancel</button>
+        </div>
+    </div>
+
+
+    <!-- EDIT VIEW -->
+    <div id="view-edit" class="view">
+        <div class="header-box"><h2>Edit Details</h2></div>
+        <div class="input-area">
+            <input type="hidden" id="edit-id">
+            <label class="label-hint">Name</label>
+            <input type="text" id="edit-name">
+            <label class="label-hint">Age</label>
+            <input type="number" id="edit-age" inputmode="numeric">
+            <button class="btn-save full-btn" onclick="updateRecord()">Update</button>
+            <button class="btn-delete full-btn" onclick="deleteRecord()">Delete</button>
+            <button class="btn-cancel full-btn" onclick="showView('view-list')">Back</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    const SUPABASE_URL = 'https://jyxzjppujqnvtzfcssyj.supabase.co'; 
+    const SUPABASE_KEY = 'sb_publishable_gpsrWElVPKKiv40-37X9Tg_WUUcZ6kD';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+
+    let records = [];
+
+
+    // Optimized: Only fetch if we don't have records or specifically need a refresh
+    async function fetchRecords(force = false) {
+        if(records.length > 0 && !force) return; 
+
+
+        const { data, error } = await supabaseClient
+            .from('records')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+
+        if (!error) {
+            records = data;
+            renderRecords();
+        }
+    }
+
+
+    function renderRecords() {
+        const container = document.getElementById('records-container');
+        container.innerHTML = records.length ? '' : '<p style="text-align:center; padding: 20px; color: #999;">No records found.</p>';
+        
+        records.forEach((rec) => {
+            const div = document.createElement('div');
+            div.className = 'record-item';
+            div.innerHTML = `<span>${rec.name}</span> <span style="color:#666">Age: ${rec.age}</span>`;
+            div.onclick = () => openEditView(rec);
+            container.appendChild(div);
+        });
+    }
+
+
+    function showView(viewId) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById(viewId).classList.add('active');
+        // No more auto-fetching here, making view switching instant!
+    }
+
+
+    async function addRecord() {
+        const name = document.getElementById('in-name').value.trim();
+        const age = parseInt(document.getElementById('in-age').value.trim());
+        if (name && age) {
+            const { error } = await supabaseClient.from('records').insert([{ name, age }]);
+            if (!error) {
+                fetchRecords(true); // Force refresh only when data actually changes
+                showView('view-list');
+            }
+        }
+    }
+
+
+    function openEditView(record) {
+        document.getElementById('edit-id').value = record.id;
+        document.getElementById('edit-name').value = record.name;
+        document.getElementById('edit-age').value = record.age;
+        showView('view-edit');
+    }
+
+
+    async function updateRecord() {
+        const id = document.getElementById('edit-id').value;
+        const name = document.getElementById('edit-name').value.trim();
+        const age = parseInt(document.getElementById('edit-age').value.trim());
+        const { error } = await supabaseClient.from('records').update({ name, age }).eq('id', id);
+        if (!error) {
+            fetchRecords(true); 
+            showView('view-list');
+        }
+    }
+
+
+    async function deleteRecord() {
+        const id = document.getElementById('edit-id').value;
+        if(confirm("Delete this record?")) {
+            const { error } = await supabaseClient.from('records').delete().eq('id', id);
+            if (!error) {
+                fetchRecords(true); 
+                showView('view-list');
+            }
+        }
+    }
+
+
+    function exportData() {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(records, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "backup.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
+
+    // Initial Load
+    fetchRecords(true);
+</script>
+
+
+</body>
+</html>
