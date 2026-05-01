@@ -134,27 +134,37 @@
     const SUPABASE_KEY = 'sb_publishable_gpsrWElVPKKiv40-37X9Tg_WUUcZ6kD';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-
     let records = [];
 
-
-    // Optimized: Only fetch if we don't have records or specifically need a refresh
     async function fetchRecords(force = false) {
         if(records.length > 0 && !force) return; 
 
+        // TARGET THE NEW SMALL BUTTON
+        const btnAdd = document.querySelector('.btn-add-small');
+        
+        if (btnAdd) {
+            btnAdd.innerText = "..."; // Using "..." to save space in the small header
+            btnAdd.disabled = true;
+            btnAdd.style.opacity = "0.5";
+        }
 
         const { data, error } = await supabaseClient
             .from('records')
             .select('*')
             .order('created_at', { ascending: false });
 
-
         if (!error) {
             records = data;
             renderRecords();
         }
-    }
 
+        // RESET BUTTON
+        if (btnAdd) {
+            btnAdd.innerText = "+ Add";
+            btnAdd.disabled = false;
+            btnAdd.style.opacity = "1";
+        }
+    }
 
     function renderRecords() {
         const container = document.getElementById('records-container');
@@ -169,13 +179,10 @@
         });
     }
 
-
     function showView(viewId) {
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById(viewId).classList.add('active');
-        // No more auto-fetching here, making view switching instant!
     }
-
 
     async function addRecord() {
         const name = document.getElementById('in-name').value.trim();
@@ -183,12 +190,14 @@
         if (name && age) {
             const { error } = await supabaseClient.from('records').insert([{ name, age }]);
             if (!error) {
-                fetchRecords(true); // Force refresh only when data actually changes
+                // Clear inputs
+                document.getElementById('in-name').value = '';
+                document.getElementById('in-age').value = '';
+                await fetchRecords(true); 
                 showView('view-list');
             }
         }
     }
-
 
     function openEditView(record) {
         document.getElementById('edit-id').value = record.id;
@@ -197,30 +206,27 @@
         showView('view-edit');
     }
 
-
     async function updateRecord() {
         const id = document.getElementById('edit-id').value;
         const name = document.getElementById('edit-name').value.trim();
         const age = parseInt(document.getElementById('edit-age').value.trim());
         const { error } = await supabaseClient.from('records').update({ name, age }).eq('id', id);
         if (!error) {
-            fetchRecords(true); 
+            await fetchRecords(true); 
             showView('view-list');
         }
     }
-
 
     async function deleteRecord() {
         const id = document.getElementById('edit-id').value;
         if(confirm("Delete this record?")) {
             const { error } = await supabaseClient.from('records').delete().eq('id', id);
             if (!error) {
-                fetchRecords(true); 
+                await fetchRecords(true); 
                 showView('view-list');
             }
         }
     }
-
 
     function exportData() {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(records, null, 2));
@@ -231,7 +237,6 @@
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
     }
-
 
     // Initial Load
     fetchRecords(true);
